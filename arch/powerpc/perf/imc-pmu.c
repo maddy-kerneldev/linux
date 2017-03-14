@@ -1,5 +1,5 @@
 /*
- * Nest Performance Monitor counter support.
+ * IMC Performance Monitor counter support.
  *
  * Copyright (C) 2016 Madhavan Srinivasan, IBM Corporation.
  *	     (C) 2016 Hemant K Shaw, IBM Corporation.
@@ -18,6 +18,9 @@ struct perchip_nest_info nest_perchip_info[IMC_MAX_CHIPS];
 struct imc_pmu *per_nest_pmu_arr[IMC_MAX_PMUS];
 static cpumask_t nest_imc_cpumask;
 
+/* Maintains base addresses for all the cores */
+static u64 per_core_pdbar_add[IMC_MAX_CHIPS][IMC_MAX_CORES];
+static cpumask_t core_imc_cpumask;
 struct imc_pmu *core_imc_pmu;
 
 /* Needed for sanity check */
@@ -37,11 +40,18 @@ static struct attribute_group imc_format_group = {
 
 /* Get the cpumask printed to a buffer "buf" */
 static ssize_t imc_pmu_cpumask_get_attr(struct device *dev,
-				struct device_attribute *attr, char *buf)
+					struct device_attribute *attr,
+					char *buf)
 {
+	struct pmu *pmu = dev_get_drvdata(dev);
 	cpumask_t *active_mask;
 
-	active_mask = &nest_imc_cpumask;
+	if (!strncmp(pmu->name, "nest_", strlen("nest_")))
+		active_mask = &nest_imc_cpumask;
+	 else if (!strncmp(pmu->name, "core_", strlen("core_")))
+		active_mask = &core_imc_cpumask;
+	else
+		return 0;
 	return cpumap_print_to_pagebuf(true, buf, active_mask);
 }
 
@@ -55,6 +65,94 @@ static struct attribute *imc_pmu_cpumask_attrs[] = {
 static struct attribute_group imc_pmu_cpumask_attr_group = {
 	.attrs = imc_pmu_cpumask_attrs,
 };
+
+/*
+ * core_imc_mem_init : Initializes memory for the current core.
+ *
+ * Uses __get_free_pages() and uses the returned address as an argument to
+ * an opal call to configure the pdbar. The address sent as an argument is
+ * converted to physical address before the opal call is made. This is the
+ * base address at which the core imc counters are populated.
+ */
+static int core_imc_mem_init(void)
+{
+	int core_id, phys_id;
+	int rc = -1;
+
+	phys_id = topology_physical_package_id(smp_processor_id());
+	core_id = smp_processor_id() / threads_per_core;
+
+	per_core_pdbar_add[phys_id][core_id] =
+		(u64)__get_free_pages(GFP_KERNEL |  __GFP_ZERO, 0);
+	rc = opal_core_imc_counters_control(OPAL_CORE_IMC_INIT,
+				       (u64)virt_to_phys((void *)per_core_pdbar_add[phys_id][core_id]),
+		 0, 0);
+
+	return rc;
+}
+
+/*
+ * Calls core_imc_mem_init and checks the return value.
+ */
+static void core_imc_init(int *loc)
+{
+	int rc = 0;
+
+	rc = core_imc_mem_init();
+	if (rc)
+		loc[smp_processor_id()] = 1;
+}
+
+static void core_imc_change_cpu_context(int old_cpu, int new_cpu)
+{
+	if (!core_imc_pmu)
+		return;
+	perf_pmu_migrate_context(&core_imc_pmu->pmu, old_cpu, new_cpu);
+}
+
+
+static int ppc_core_imc_cpu_online(unsigned int cpu)
+{
+	int ret;
+
+	/* If a cpu for this core is already set, then, don't do anything */
+	ret = cpumask_any_and(&core_imc_cpumask,
+				 cpu_sibling_mask(cpu));
+	if (ret < nr_cpu_ids)
+		return 0;
+
+	/* Else, set the cpu in the mask, and change the context */
+	cpumask_set_cpu(cpu, &core_imc_cpumask);
+	core_imc_change_cpu_context(-1, cpu);
+	return 0;
+}
+
+static int ppc_core_imc_cpu_offline(unsigned int cpu)
+{
+	int target;
+	unsigned int ncpu;
+
+	/*
+	 * clear this cpu out of the mask, if not present in the mask,
+	 * don't bother doing anything.
+	 */
+	if (!cpumask_test_and_clear_cpu(cpu, &core_imc_cpumask))
+		return 0;
+
+	/* Find any online cpu in that core except the current "cpu" */
+	ncpu = cpumask_any_but(cpu_sibling_mask(cpu), cpu);
+
+	if (ncpu < nr_cpu_ids) {
+		target = ncpu;
+		cpumask_set_cpu(target, &core_imc_cpumask);
+	} else
+		target = -1;
+
+	/* migrate the context */
+	core_imc_change_cpu_context(cpu, target);
+
+	return 0;
+}
 
 /*
  * nest_init : Initializes the nest imc engine for the current chip.
@@ -189,6 +287,86 @@ fail:
 	return -ENODEV;
 }
 
+static void cleanup_core_imc_memory(void)
+{
+	int phys_id, core_id;
+	u64 addr;
+
+	phys_id = topology_physical_package_id(smp_processor_id());
+	core_id = smp_processor_id() / threads_per_core;
+
+	addr = per_core_pdbar_add[phys_id][core_id];
+
+	/* Only if the address is non-zero shall, we free it */
+	if (addr)
+		free_pages(addr, 0);
+}
+
+static void cleanup_all_core_imc_memory(void)
+{
+	on_each_cpu_mask(&core_imc_cpumask,
+			 (smp_call_func_t)cleanup_core_imc_memory, NULL, 1);
+}
+
+static void core_imc_control_disable(void)
+{
+	opal_core_imc_counters_control(OPAL_CORE_IMC_DISABLE, 0, 0, 0);
+}
+
+static void core_imc_disable(void)
+{
+	on_each_cpu_mask(&core_imc_cpumask,
+			 (smp_call_func_t)core_imc_control_disable, NULL, 1);
+}
+
+static int core_imc_pmu_cpumask_init(void)
+{
+	int cpu, *cpus_opal_rc;
+
+	/*
+	 * Get the mask of first online cpus for every core.
+	 */
+	core_imc_cpumask = cpu_online_cores_map();
+
+	/*
+	 * Memory for OPAL call return value.
+	 */
+	cpus_opal_rc = kzalloc((sizeof(int) * nr_cpu_ids), GFP_KERNEL);
+	if (!cpus_opal_rc)
+		goto fail;
+
+	/*
+	 * Initialize the core IMC PMU on each core using the
+	 * core_imc_cpumask by calling core_imc_init().
+	 */
+	on_each_cpu_mask(&core_imc_cpumask, (smp_call_func_t)core_imc_init,
+						(void *)cpus_opal_rc, 1);
+
+	/* Check return value array for any OPAL call failure */
+	for_each_cpu(cpu, &core_imc_cpumask) {
+		if (cpus_opal_rc[cpu]) {
+			kfree(cpus_opal_rc);
+			goto fail;
+		}
+	}
+
+	kfree(cpus_opal_rc);
+
+	cpuhp_setup_state(CPUHP_AP_PERF_POWERPC_COREIMC_ONLINE,
+			  "POWER_CORE_IMC_ONLINE",
+			  ppc_core_imc_cpu_online,
+			  ppc_core_imc_cpu_offline);
+
+	return 0;
+
+fail:
+	/* First, disable the core imc engine */
+	core_imc_disable();
+	/* Then, free up the allocated pages */
+	cleanup_all_core_imc_memory();
+	return -ENODEV;
+}
+
 static int nest_imc_event_init(struct perf_event *event)
 {
 	int chip_id;
@@ -221,6 +399,44 @@ static int nest_imc_event_init(struct perf_event *event)
 	chip_id = topology_physical_package_id(event->cpu);
 	pcni = &nest_perchip_info[chip_id];
 	event->hw.event_base = pcni->vbase[config/PAGE_SIZE] +
+		(config & ~PAGE_MASK);
+
+	return 0;
+}
+
+static int core_imc_event_init(struct perf_event *event)
+{
+	int core_id, phys_id;
+	u64 config = event->attr.config;
+
+	if (event->attr.type != event->pmu->type)
+		return -ENOENT;
+
+	/* Sampling not supported */
+	if (event->hw.sample_period)
+		return -EINVAL;
+
+	/* unsupported modes and filters */
+	if (event->attr.exclude_user   ||
+	    event->attr.exclude_kernel ||
+	    event->attr.exclude_hv     ||
+	    event->attr.exclude_idle   ||
+	    event->attr.exclude_host   ||
+	    event->attr.exclude_guest)
+		return -EINVAL;
+
+	if (event->cpu < 0)
+		return -EINVAL;
+
+	event->hw.idx = -1;
+
+	/* Sanity check for config (event offset) */
+	if (config > core_max_offset)
+		return -EINVAL;
+
+	core_id = event->cpu / threads_per_core;
+	phys_id = topology_physical_package_id(event->cpu);
+	event->hw.event_base = per_core_pdbar_add[phys_id][core_id] +
 		(config & ~PAGE_MASK);
 
 	return 0;
@@ -273,7 +489,11 @@ static int update_pmu_ops(struct imc_pmu *pmu)
 		return -EINVAL;
 
 	pmu->pmu.task_ctx_nr = perf_invalid_context;
-	pmu->pmu.event_init = nest_imc_event_init;
+	if (pmu->domain == IMC_DOMAIN_NEST) {
+		pmu->pmu.event_init = nest_imc_event_init;
+	} else if (pmu->domain == IMC_DOMAIN_CORE) {
+		pmu->pmu.event_init = core_imc_event_init;
+	}
 	pmu->pmu.add = imc_event_add;
 	pmu->pmu.del = imc_event_stop;
 	pmu->pmu.start = imc_event_start;
@@ -349,9 +569,20 @@ int init_imc_pmu(struct imc_events *events, int idx,
 	int ret = -ENODEV;
 
 	/* Add cpumask and register for hotplug notification */
-	ret = nest_pmu_cpumask_init();
-	if (ret)
-		return ret;
+	switch (pmu_ptr->domain) {
+	case IMC_DOMAIN_NEST:
+		ret = nest_pmu_cpumask_init();
+		if (ret)
+			return ret;
+		break;
+	case IMC_DOMAIN_CORE:
+		ret = core_imc_pmu_cpumask_init();
+		if (ret)
+			return ret;
+		break;
+	default:
+		return -1;  /* Unknown domain */
+	}
 
 	ret = update_events_in_group(events, idx, pmu_ptr);
 	if (ret)
@@ -376,6 +607,9 @@ err_free:
 		kfree(pmu_ptr->attr_groups[0]->attrs);
 		kfree(pmu_ptr->attr_groups[0]);
 	}
+	/* For core_imc, we have allocated memory, we need to free it */
+	if (pmu_ptr->domain == IMC_DOMAIN_CORE)
+		cleanup_all_core_imc_memory();
 
 	return ret;
 }

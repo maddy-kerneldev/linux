@@ -169,7 +169,8 @@
 #define OPAL_PCI_TCE_KILL			126
 #define OPAL_NMMU_SET_PTCR			127
 #define OPAL_NEST_IMC_COUNTERS_CONTROL		145
-#define OPAL_LAST				145
+#define OPAL_CORE_IMC_COUNTERS_CONTROL		146
+#define OPAL_LAST				146
 
 /* Device tree flags */
 
@@ -927,6 +928,13 @@ enum {
 	OPAL_PCI_TCE_KILL_PAGES,
 	OPAL_PCI_TCE_KILL_PE,
 	OPAL_PCI_TCE_KILL_ALL,
+};
+
+/* Operation argument to Core IMC */
+enum {
+	OPAL_CORE_IMC_DISABLE,
+	OPAL_CORE_IMC_ENABLE,
+	OPAL_CORE_IMC_INIT,
 };
 
 #endif /* __ASSEMBLY__ */

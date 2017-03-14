@@ -191,12 +191,12 @@ static int imc_events_node_parser(struct device_node *dev,
 				kfree(events[idx].ev_value);
 				continue;
 			}
+			idx++;
 			/*
 			 * If the common scale and unit properties available,
 			 * then, assign them to this event
 			 */
 			if (event_scale) {
-				idx++;
 				ret = set_event_property(event_scale, "scale",
 							 &events[idx],
 							 ev_name);
@@ -210,8 +210,8 @@ static int imc_events_node_parser(struct device_node *dev,
 							 ev_name);
 				if (ret)
 					continue;
+				idx++;
 			}
-			idx++;
 		} else if (strncmp(pp->name, "unit", 4) == 0) {
 			ret = set_event_property(pp, "unit", &events[idx],
 						 ev_name);

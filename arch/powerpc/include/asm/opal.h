@@ -229,6 +229,8 @@ int64_t opal_nmmu_set_ptcr(uint64_t chip_id, uint64_t ptcr);
 
 int64_t opal_nest_imc_counters_control(uint64_t mode, uint64_t value1,
 				uint64_t value2, uint64_t value3);
+int64_t opal_core_imc_counters_control(uint64_t operation, uint64_t addr,
+				uint64_t value2, uint64_t value3);
 
 /* Internal functions */
 extern int early_init_dt_scan_opal(unsigned long node, const char *uname,

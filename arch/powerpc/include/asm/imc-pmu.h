@@ -21,6 +21,7 @@
 #define IMC_MAX_CHIPS			32
 #define IMC_MAX_PMUS			32
 #define IMC_MAX_PMU_NAME_LEN		256
+#define IMC_MAX_CORES			256
 
 #define NEST_IMC_ENGINE_START		1
 #define NEST_IMC_ENGINE_STOP		0
