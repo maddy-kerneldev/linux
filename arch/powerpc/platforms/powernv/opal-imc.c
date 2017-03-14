@@ -36,6 +36,7 @@ extern struct imc_pmu *per_nest_pmu_arr[IMC_MAX_PMUS];
 
 extern int init_imc_pmu(struct imc_events *events,
 			int idx, struct imc_pmu *pmu_ptr);
+u64 nest_max_offset;
 
 static int imc_event_info(char *name, struct imc_events *events)
 {
@@ -68,8 +69,25 @@ static int imc_event_info_str(struct property *pp, char *name,
 	return 0;
 }
 
+/*
+ * Updates the maximum offset for an event in the pmu with domain
+ * "pmu_domain". Right now, only nest domain is supported.
+ */
+static void update_max_value(u32 value, int pmu_domain)
+{
+	switch (pmu_domain) {
+	case IMC_DOMAIN_NEST:
+		if (nest_max_offset < value)
+			nest_max_offset = value;
+		break;
+	default:
+		/* Unknown domain, return */
+		return;
+	}
+}
+
 static int imc_event_info_val(char *name, u32 val,
-			      struct imc_events *events)
+			      struct imc_events *events, int pmu_domain)
 {
 	int ret;
 
@@ -77,6 +95,7 @@ static int imc_event_info_val(char *name, u32 val,
 	if (ret)
 		return ret;
 	sprintf(events->ev_value, "event=0x%x", val);
+	update_max_value(val, pmu_domain);
 
 	return 0;
 }
@@ -113,7 +132,8 @@ static int imc_events_node_parser(struct device_node *dev,
 				  struct property *event_scale,
 				  struct property *event_unit,
 				  struct property *name_prefix,
-				  u32 reg)
+				  u32 reg,
+				  int pmu_domain)
 {
 	struct property *name, *pp;
 	char *ev_name;
@@ -158,7 +178,8 @@ static int imc_events_node_parser(struct device_node *dev,
 		if (strncmp(pp->name, "reg", 3) == 0) {
 			of_property_read_u32(dev, pp->name, &val);
 			val += reg;
-			ret = imc_event_info_val(ev_name, val, &events[idx]);
+			ret = imc_event_info_val(ev_name, val, &events[idx],
+				pmu_domain);
 			if (ret) {
 				kfree(events[idx].ev_name);
 				kfree(events[idx].ev_value);
@@ -365,7 +386,8 @@ static int imc_pmu_create(struct device_node *parent, int pmu_index)
 	/* Loop through event nodes */
 	for_each_child_of_node(dir, ev_node) {
 		ret = imc_events_node_parser(ev_node, &events[idx], scale_pp,
-					     unit_pp, name_prefix, reg);
+					     unit_pp, name_prefix, reg,
+					     pmu_ptr->domain);
 		if (ret < 0) {
 			/* Unable to parse this event */
 			if (ret == -ENOMEM)
