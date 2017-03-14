@@ -168,7 +168,8 @@
 #define OPAL_INT_SET_MFRR			125
 #define OPAL_PCI_TCE_KILL			126
 #define OPAL_NMMU_SET_PTCR			127
-#define OPAL_LAST				127
+#define OPAL_NEST_IMC_COUNTERS_CONTROL		145
+#define OPAL_LAST				145
 
 /* Device tree flags */
 
