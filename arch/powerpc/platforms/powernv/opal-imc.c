@@ -33,10 +33,12 @@
 
 extern struct perchip_nest_info nest_perchip_info[IMC_MAX_CHIPS];
 extern struct imc_pmu *per_nest_pmu_arr[IMC_MAX_PMUS];
+extern struct imc_pmu *core_imc_pmu;
 
 extern int init_imc_pmu(struct imc_events *events,
 			int idx, struct imc_pmu *pmu_ptr);
 u64 nest_max_offset;
+u64 core_max_offset;
 
 static int imc_event_info(char *name, struct imc_events *events)
 {
@@ -79,6 +81,10 @@ static void update_max_value(u32 value, int pmu_domain)
 	case IMC_DOMAIN_NEST:
 		if (nest_max_offset < value)
 			nest_max_offset = value;
+		break;
+	case IMC_DOMAIN_CORE:
+		if (core_max_offset < value)
+			core_max_offset = value;
 		break;
 	default:
 		/* Unknown domain, return */
@@ -231,6 +237,8 @@ int imc_get_domain(struct device_node *pmu_dev)
 {
 	if (of_device_is_compatible(pmu_dev, IMC_DTB_NEST_COMPAT))
 		return IMC_DOMAIN_NEST;
+	if (of_device_is_compatible(pmu_dev, IMC_DTB_CORE_COMPAT))
+		return IMC_DOMAIN_CORE;
 	else
 		return UNKNOWN_DOMAIN;
 }
@@ -298,7 +306,10 @@ static int imc_pmu_create(struct device_node *parent, int pmu_index)
 		goto free_pmu;
 
 	/* Needed for hotplug/migration */
-	per_nest_pmu_arr[pmu_index] = pmu_ptr;
+	if (pmu_ptr->domain == IMC_DOMAIN_CORE)
+		core_imc_pmu = pmu_ptr;
+	else if (pmu_ptr->domain == IMC_DOMAIN_NEST)
+		per_nest_pmu_arr[pmu_index] = pmu_ptr;
 
 	/*
 	 * "events" property inside a PMU node contains the phandle value
@@ -354,7 +365,10 @@ static int imc_pmu_create(struct device_node *parent, int pmu_index)
 	}
 
 	/* Save the name to register it later */
-	sprintf(buf, "nest_%s", (char *)pp->value);
+	if (pmu_ptr->domain == IMC_DOMAIN_NEST)
+		sprintf(buf, "nest_%s", (char *)pp->value);
+	else
+		sprintf(buf, "%s_imc", (char *)pp->value);
 	pmu_ptr->pmu.name = (char *)buf;
 
 	/*
