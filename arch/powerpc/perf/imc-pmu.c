@@ -687,6 +687,16 @@ static void cleanup_all_thread_imc_memory(void)
 	on_each_cpu(cleanup_thread_imc_memory, NULL, 1);
 }
 
+static void thread_imc_update_ldbar(unsigned int cpu_id)
+{
+	u64 ldbar_addr, ldbar_value;
+
+	ldbar_addr = (u64)virt_to_phys((void *)per_cpu_add[cpu_id]);
+	ldbar_value = (ldbar_addr & (u64)THREAD_IMC_LDBAR_MASK) |
+			(u64)THREAD_IMC_ENABLE;
+	mtspr(SPRN_LDBAR, ldbar_value);
+}
+
 /*
  * Allocates a page of memory for each of the online cpus, and, writes the
  * physical base address of that page to the LDBAR for that cpu. This starts
@@ -694,20 +704,33 @@ static void cleanup_all_thread_imc_memory(void)
  */
 static void thread_imc_mem_alloc(void *dummy)
 {
-	u64 ldbar_addr, ldbar_value;
 	int cpu_id = smp_processor_id();
 
 	per_cpu_add[cpu_id] = (u64)__get_free_pages(GFP_KERNEL | __GFP_ZERO,
 						    0);
-	ldbar_addr = (u64)virt_to_phys((void *)per_cpu_add[cpu_id]);
-	ldbar_value = (ldbar_addr & (u64)THREAD_IMC_LDBAR_MASK) |
-		(u64)THREAD_IMC_ENABLE;
-	mtspr(SPRN_LDBAR, ldbar_value);
+	thread_imc_update_ldbar(cpu_id);
+}
+
+static int ppc_thread_imc_cpu_online(unsigned int cpu)
+{
+	thread_imc_update_ldbar(cpu);
+	return 0;
+
+}
+
+static int ppc_thread_imc_cpu_offline(unsigned int cpu)
+{
+	mtspr(SPRN_LDBAR, 0);
+	return 0;
 }
 
 void thread_imc_cpu_init(void)
 {
 	on_each_cpu(thread_imc_mem_alloc, NULL, 1);
+	cpuhp_setup_state(CPUHP_AP_PERF_POWERPC_THREADIMC_ONLINE,
+			  "POWER_THREAD_IMC_ONLINE",
+			   ppc_thread_imc_cpu_online,
+			   ppc_thread_imc_cpu_offline);
 }
 
 static void thread_imc_ldbar_disable(void *dummy)
