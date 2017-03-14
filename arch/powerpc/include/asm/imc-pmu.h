@@ -22,6 +22,7 @@
 #define IMC_MAX_PMUS			32
 #define IMC_MAX_PMU_NAME_LEN		256
 #define IMC_MAX_CORES			256
+#define IMC_MAX_CPUS                    2048
 
 #define NEST_IMC_ENGINE_START		1
 #define NEST_IMC_ENGINE_STOP		0
@@ -33,6 +34,9 @@
 #define IMC_DTB_NEST_COMPAT	"ibm,imc-counters-nest"
 #define IMC_DTB_CORE_COMPAT	"ibm,imc-counters-core"
 #define IMC_DTB_THREAD_COMPAT   "ibm,imc-counters-thread"
+
+#define THREAD_IMC_LDBAR_MASK           0x0003ffffffffe000
+#define THREAD_IMC_ENABLE               0x8000000000000000
 
 /*
  * Structure to hold per chip specific memory address
