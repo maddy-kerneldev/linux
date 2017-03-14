@@ -31,8 +31,11 @@
 #include <asm/cputable.h>
 #include <asm/imc-pmu.h>
 
-struct perchip_nest_info nest_perchip_info[IMC_MAX_CHIPS];
-struct imc_pmu *per_nest_pmu_arr[IMC_MAX_PMUS];
+extern struct perchip_nest_info nest_perchip_info[IMC_MAX_CHIPS];
+extern struct imc_pmu *per_nest_pmu_arr[IMC_MAX_PMUS];
+
+extern int init_imc_pmu(struct imc_events *events,
+			int idx, struct imc_pmu *pmu_ptr);
 
 static int imc_event_info(char *name, struct imc_events *events)
 {
@@ -378,6 +381,11 @@ static int imc_pmu_create(struct device_node *parent, int pmu_index)
 		idx += ret;
 	}
 
+	ret = init_imc_pmu(events, idx, pmu_ptr);
+	if (ret) {
+		pr_err("IMC PMU %s Register failed\n", pmu_ptr->pmu.name);
+		goto free_events;
+	}
 	return 0;
 
 free_events:
