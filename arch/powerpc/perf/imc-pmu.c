@@ -317,7 +317,7 @@ static void core_imc_control_disable(void)
 	opal_core_imc_counters_control(OPAL_CORE_IMC_DISABLE, 0, 0, 0);
 }
 
-static void core_imc_disable(void)
+void core_imc_disable(void)
 {
 	on_each_cpu_mask(&core_imc_cpumask,
 			 (smp_call_func_t)core_imc_control_disable, NULL, 1);
@@ -708,6 +708,16 @@ static void thread_imc_mem_alloc(void *dummy)
 void thread_imc_cpu_init(void)
 {
 	on_each_cpu(thread_imc_mem_alloc, NULL, 1);
+}
+
+static void thread_imc_ldbar_disable(void *dummy)
+{
+        mtspr(SPRN_LDBAR, 0);
+}
+
+void thread_imc_disable(void)
+{
+        on_each_cpu(thread_imc_ldbar_disable, NULL, 1);
 }
 
 /*

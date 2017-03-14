@@ -80,4 +80,6 @@ struct imc_pmu {
 #define UNKNOWN_DOMAIN		-1
 
 int imc_get_domain(struct device_node *pmu_dev);
+void core_imc_disable(void);
+void thread_imc_disable(void);
 #endif /* PPC_POWERNV_IMC_PMU_DEF_H */
