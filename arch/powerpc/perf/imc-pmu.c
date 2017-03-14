@@ -127,6 +127,7 @@ static int ppc_core_imc_cpu_online(unsigned int cpu)
 
 	/* Else, set the cpu in the mask, and change the context */
 	cpumask_set_cpu(cpu, &core_imc_cpumask);
+	opal_core_imc_counters_control(OPAL_CORE_IMC_ENABLE, 0, 0, 0);
 	core_imc_change_cpu_context(-1, cpu);
 	return 0;
 }
@@ -149,8 +150,10 @@ static int ppc_core_imc_cpu_offline(unsigned int cpu)
 	if (ncpu < nr_cpu_ids) {
 		target = ncpu;
 		cpumask_set_cpu(target, &core_imc_cpumask);
-	} else
+	} else {
+		opal_core_imc_counters_control(OPAL_CORE_IMC_DISABLE, 0, 0, 0);
 		target = -1;
+	}
 
 	/* migrate the context */
 	core_imc_change_cpu_context(cpu, target);
