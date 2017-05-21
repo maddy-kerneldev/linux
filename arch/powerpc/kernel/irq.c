@@ -350,7 +350,7 @@ bool prep_irq_for_idle(void)
 	 * of entering the low power state.
 	 */
 	local_paca->irq_happened &= ~PACA_IRQ_HARD_DIS;
-	local_paca->soft_enabled = IRQ_ENABLED;
+	soft_enabled_set(IRQ_ENABLED);
 
 	/* Tell the caller to enter the low power state */
 	return true;
