@@ -90,11 +90,6 @@ static inline unsigned long arch_local_save_flags(void)
 	return soft_enabled_return();
 }
 
-static inline unsigned long arch_local_irq_disable(void)
-{
-	return soft_enabled_set_return(IRQ_DISABLED);
-}
-
 extern void arch_local_irq_restore(unsigned long);
 
 static inline void arch_local_irq_enable(void)
@@ -104,7 +99,12 @@ static inline void arch_local_irq_enable(void)
 
 static inline unsigned long arch_local_irq_save(void)
 {
-	return arch_local_irq_disable();
+	return soft_enabled_set_return(IRQ_DISABLED);
+}
+
+static inline void arch_local_irq_disable(void)
+{
+	arch_local_irq_save();
 }
 
 static inline bool arch_irqs_disabled_flags(unsigned long flags)
