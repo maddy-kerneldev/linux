@@ -283,6 +283,16 @@ int ptrace_get_reg(struct task_struct *task, int regno, unsigned long *data)
 	if (regno == PT_DSCR)
 		return get_user_dscr(task, data);
 
+	/*
+	 * softe copies paca->soft_enabled variable state. Since soft_enabled is
+	 * no more used as a flag, lets force usr to alway see the softe value as 1
+	 * which means interrupts are not soft disabled.
+	 */
+	if (regno == PT_SOFTE) {
+		*data = 1;
+		return  0;
+	}
+
 	if (regno < (sizeof(struct pt_regs) / sizeof(unsigned long))) {
 		*data = ((unsigned long *)task->thread.regs)[regno];
 		return 0;

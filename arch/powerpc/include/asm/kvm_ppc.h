@@ -869,7 +869,7 @@ static inline void kvmppc_fix_ee_before_entry(void)
 
 	/* Only need to enable IRQs by hard enabling them after this */
 	local_paca->irq_happened = 0;
-	soft_enabled_set(IRQ_ENABLED);
+	soft_enabled_set(IRQ_DISABLE_MASK_NONE);
 #endif
 }
 

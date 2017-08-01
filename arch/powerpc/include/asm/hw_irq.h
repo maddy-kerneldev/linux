@@ -30,8 +30,8 @@
 /*
  * flags for paca->soft_enabled
  */
-#define IRQ_ENABLED	1
-#define IRQ_DISABLED	0
+#define IRQ_DISABLE_MASK_NONE	0
+#define IRQ_DISABLE_MASK_LINUX	1
 
 #endif /* CONFIG_PPC64 */
 
@@ -94,12 +94,12 @@ extern void arch_local_irq_restore(unsigned long);
 
 static inline void arch_local_irq_enable(void)
 {
-	arch_local_irq_restore(IRQ_ENABLED);
+	arch_local_irq_restore(IRQ_DISABLE_MASK_NONE);
 }
 
 static inline unsigned long arch_local_irq_save(void)
 {
-	return soft_enabled_set_return(IRQ_DISABLED);
+	return soft_enabled_set_return(IRQ_DISABLE_MASK_LINUX);
 }
 
 static inline void arch_local_irq_disable(void)
@@ -109,7 +109,7 @@ static inline void arch_local_irq_disable(void)
 
 static inline bool arch_irqs_disabled_flags(unsigned long flags)
 {
-	return flags == IRQ_DISABLED;
+	return flags & IRQ_DISABLE_MASK_LINUX;
 }
 
 static inline bool arch_irqs_disabled(void)
@@ -128,7 +128,7 @@ static inline bool arch_irqs_disabled(void)
 #define hard_irq_disable()	do {			\
 	unsigned long flags;				\
 	__hard_irq_disable();				\
-	flags = soft_enabled_set_return(IRQ_DISABLED);	\
+	flags = soft_enabled_set_return(IRQ_DISABLE_MASK_LINUX);\
 	local_paca->irq_happened |= PACA_IRQ_HARD_DIS;	\
 	if (!arch_irqs_disabled_flags(flags))		\
 		trace_hardirqs_off();			\
@@ -153,7 +153,7 @@ static inline void may_hard_irq_enable(void)
 
 static inline bool arch_irq_disabled_regs(struct pt_regs *regs)
 {
-	return (regs->softe == IRQ_DISABLED);
+	return (regs->softe & IRQ_DISABLE_MASK_LINUX);
 }
 
 extern bool prep_irq_for_idle(void);
