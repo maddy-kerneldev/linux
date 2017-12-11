@@ -54,8 +54,8 @@ END_FTR_SECTION_IFCLR(CPU_FTR_CAN_NAP)
 	mfmsr	r7
 #endif /* CONFIG_TRACE_IRQFLAGS */
 
-	li	r0,IRQ_DISABLE_MASK_NONE
-	stb	r0,PACASOFTIRQEN(r13)	/* we'll hard-enable shortly */
+	li	r0,IRQ_SOFT_MASK_NONE
+	stb	r0,PACAIRQSOFTMASK(r13)	/* we'll hard-enable shortly */
 BEGIN_FTR_SECTION
 	DSSALL
 	sync

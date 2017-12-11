@@ -129,8 +129,8 @@ END_FW_FTR_SECTION_IFSET(FW_FEATURE_SPLPAR)
 	 * is correct
 	 */
 #if defined(CONFIG_TRACE_IRQFLAGS) && defined(CONFIG_BUG)
-	lbz	r10,PACASOFTIRQEN(r13)
-1:	tdnei	r10,IRQ_DISABLE_MASK_NONE
+	lbz	r10,PACAIRQSOFTMASK(r13)
+1:	tdnei	r10,IRQ_SOFT_MASK_NONE
 	EMIT_BUG_ENTRY 1b,__FILE__,__LINE__,BUGFLAG_WARNING
 #endif
 
@@ -146,7 +146,7 @@ system_call:			/* label this so stack traces look sane */
 	/* We do need to set SOFTE in the stack frame or the return
 	 * from interrupt will be painful
 	 */
-	li	r10,IRQ_DISABLE_MASK_NONE
+	li	r10,IRQ_SOFT_MASK_NONE
 	std	r10,SOFTE(r1)
 
 	CURRENT_THREAD_INFO(r11, r1)
@@ -743,7 +743,7 @@ resume_kernel:
 	cmpwi	cr0,r8,0
 	bne	restore
 	ld	r0,SOFTE(r1)
-	andi.	r0,r0,IRQ_DISABLE_MASK
+	andi.	r0,r0,IRQ_SOFT_MASK_STD
 	bne	restore
 
 	/*
@@ -781,12 +781,12 @@ restore:
 	 * are about to re-enable interrupts
 	 */
 	ld	r5,SOFTE(r1)
-	lbz	r6,PACASOFTIRQEN(r13)
-	andi.	r5,r5,IRQ_DISABLE_MASK
+	lbz	r6,PACAIRQSOFTMASK(r13)
+	andi.	r5,r5,IRQ_SOFT_MASK_STD
 	bne	.Lrestore_irq_off
 
 	/* We are enabling, were we already enabled ? Yes, just return */
-	andi.	r6,r6,IRQ_DISABLE_MASK
+	andi.	r6,r6,IRQ_SOFT_MASK_STD
 	beq	cr0,.Ldo_restore
 
 	/*
@@ -805,8 +805,8 @@ restore:
 	 */
 .Lrestore_no_replay:
 	TRACE_ENABLE_INTS
-	li	r0,IRQ_DISABLE_MASK_NONE
-	stb	r0,PACASOFTIRQEN(r13);
+	li	r0,IRQ_SOFT_MASK_NONE
+	stb	r0,PACAIRQSOFTMASK(r13);
 
 	/*
 	 * Final return path. BookE is handled in a different file
@@ -913,8 +913,8 @@ END_FTR_SECTION_IFSET(CPU_FTR_HAS_PPR)
 1:
 #if defined(CONFIG_TRACE_IRQFLAGS) && defined(CONFIG_BUG)
 	/* The interrupt should not have soft enabled. */
-	lbz	r7,PACASOFTIRQEN(r13)
-	tdeqi	r7,IRQ_DISABLE_MASK_NONE
+	lbz	r7,PACAIRQSOFTMASK(r13)
+	tdeqi	r7,IRQ_SOFT_MASK_NONE
 	EMIT_BUG_ENTRY 1b,__FILE__,__LINE__,BUGFLAG_WARNING
 #endif
 	b	.Ldo_restore
@@ -1034,8 +1034,8 @@ _GLOBAL(enter_rtas)
 	/* There is no way it is acceptable to get here with interrupts enabled,
 	 * check it with the asm equivalent of WARN_ON
 	 */
-	lbz	r0,PACASOFTIRQEN(r13)
-1:	tdeqi	r0,IRQ_DISABLE_MASK_NONE
+	lbz	r0,PACAIRQSOFTMASK(r13)
+1:	tdeqi	r0,IRQ_SOFT_MASK_NONE
 	EMIT_BUG_ENTRY 1b,__FILE__,__LINE__,BUGFLAG_WARNING
 #endif
 
