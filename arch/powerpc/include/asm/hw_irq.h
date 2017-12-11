@@ -27,12 +27,15 @@
 #define PACA_IRQ_DEC		0x08 /* Or FIT */
 #define PACA_IRQ_EE_EDGE	0x10 /* BookE only */
 #define PACA_IRQ_HMI		0x20
+#define PACA_IRQ_PMI		0x40
 
 /*
  * flags for paca->irq_soft_mask
  */
 #define IRQ_SOFT_MASK_NONE	0x00
-#define IRQ_SOFT_MASK_STD	0x01
+#define IRQ_SOFT_MASK_STD	0x01 /* local_irq_disable() interrupts */
+#define IRQ_SOFT_MASK_PMU	0x02
+#define IRQ_SOFT_MASK_ALL	0x03
 
 #endif /* CONFIG_PPC64 */
 
@@ -152,13 +155,13 @@ static inline bool arch_irqs_disabled(void)
 #define __hard_irq_disable()	__mtmsrd(local_paca->kernel_msr, 1)
 #endif
 
-#define hard_irq_disable()	do {				\
-	unsigned long flags;					\
-	__hard_irq_disable();					\
-	flags = irq_soft_mask_set_return(IRQ_SOFT_MASK_STD);	\
-	local_paca->irq_happened |= PACA_IRQ_HARD_DIS;		\
-	if (!arch_irqs_disabled_flags(flags))			\
-		trace_hardirqs_off();				\
+#define hard_irq_disable()	do {					\
+	unsigned long flags;						\
+	__hard_irq_disable();						\
+	flags = irq_soft_mask_set_return(IRQ_SOFT_MASK_ALL);		\
+	local_paca->irq_happened |= PACA_IRQ_HARD_DIS;			\
+	if (!arch_irqs_disabled_flags(flags))				\
+		trace_hardirqs_off();					\
 } while(0)
 
 static inline bool lazy_irq_pending(void)
